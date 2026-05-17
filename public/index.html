@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>DOST Frame Exporter</title>
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div class="container">
+
+    <!-- HEADER -->
+    <header>
+      <div class="header-content">
+        <h1>DOST Frame Exporter</h1>
+
+        <p class="subtitle">
+          Extract frames from your videos and download as ZIP
+        </p>
+      </div>
+    </header>
+
+    <!-- MAIN -->
+    <main>
+
+      <div class="card">
+
+        <!-- STEP 1 -->
+        <section class="upload-section">
+
+          <h2>Step 1 · Upload Video</h2>
+
+          <div class="upload-area" id="uploadArea">
+
+            <svg
+              class="upload-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+
+              <polyline points="17 8 12 3 7 8"></polyline>
+
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+
+            <p class="upload-text">
+              Drag and drop your video here
+            </p>
+
+            <p class="upload-hint">
+              or click to browse files
+            </p>
+
+            <p class="upload-hint" style="margin-top: 10px;">
+              MP4 · MOV · AVI · MKV · WebM · up to 36GB
+            </p>
+
+            <input
+              type="file"
+              id="videoInput"
+              accept="video/*"
+              style="display: none;"
+            />
+          </div>
+
+          <!-- VIDEO INFO -->
+          <div
+            id="videoInfo"
+            class="video-info"
+            style="display: none;"
+          >
+
+            <div class="info-item">
+              <strong>File Name</strong>
+              <span id="videoFileName">-</span>
+            </div>
+
+            <div class="info-item">
+              <strong>Duration</strong>
+              <span id="videoDuration">-</span>
+            </div>
+
+            <div class="info-item">
+              <strong>Estimated Frames</strong>
+              <span id="estimatedFrames">-</span>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- STEP 2 -->
+        <section class="fps-section">
+
+          <h2>Step 2 · Configure FPS</h2>
+
+          <div class="fps-config">
+
+            <label for="fpsInput" class="fps-input-label">
+              Frames per second
+            </label>
+
+            <div class="fps-input-group">
+
+              <input
+                type="range"
+                id="fpsSlider"
+                min="2"
+                max="60"
+                value="5"
+                class="fps-slider"
+              />
+
+              <input
+                type="number"
+                id="fpsInput"
+                min="2"
+                max="60"
+                value="5"
+                class="fps-number"
+              />
+
+            </div>
+
+            <p
+              class="fps-description"
+              id="fpsDescription"
+            >
+              5 frames per second
+            </p>
+
+          </div>
+        </section>
+
+        <!-- STEP 3 -->
+        <section class="action-section">
+
+          <h2>Step 3 · Extract & Download</h2>
+
+          <button
+            id="extractBtn"
+            class="btn btn-primary"
+            disabled
+          >
+            <span class="btn-text">
+              Extract Frames
+            </span>
+
+            <span
+              class="btn-spinner"
+              style="display: none;"
+            ></span>
+          </button>
+
+          <p class="action-hint">
+            Frames will automatically download as a ZIP file
+          </p>
+
+        </section>
+
+        <!-- PROGRESS -->
+        <div
+          id="progressContainer"
+          class="progress-container"
+          style="display: none;"
+        >
+
+          <div class="progress-header">
+
+            <h3>Extraction Progress</h3>
+
+            <button
+              id="cancelBtn"
+              class="btn btn-secondary btn-small"
+            >
+              Cancel
+            </button>
+
+          </div>
+
+          <div class="progress-stats">
+
+            <div class="stat">
+              <span class="stat-label">
+                Frames Extracted
+              </span>
+
+              <span
+                class="stat-value"
+                id="framesExtracted"
+              >
+                0
+              </span>
+            </div>
+
+            <div class="stat">
+              <span class="stat-label">
+                Progress
+              </span>
+
+              <span
+                class="stat-value"
+                id="progressPercent"
+              >
+                0%
+              </span>
+            </div>
+
+            <div class="stat">
+              <span class="stat-label">
+                Elapsed Time
+              </span>
+
+              <span
+                class="stat-value"
+                id="elapsedTime"
+              >
+                0s
+              </span>
+            </div>
+
+            <div class="stat">
+              <span class="stat-label">
+                Remaining
+              </span>
+
+              <span
+                class="stat-value"
+                id="estimatedRemaining"
+              >
+                --
+              </span>
+            </div>
+
+          </div>
+
+          <div class="progress-bar">
+            <div
+              class="progress-fill"
+              id="progressFill"
+            ></div>
+          </div>
+
+          <p
+            class="progress-message"
+            id="progressMessage"
+          >
+            Processing video...
+          </p>
+
+        </div>
+
+        <!-- STATUS -->
+        <div
+          id="status"
+          class="status"
+          style="display: none;"
+        ></div>
+
+      </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer>
+      <p>
+        Prepared for Project Naira Bantai · DOST Frame Exporter
+      </p>
+    </footer>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

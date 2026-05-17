@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: dost-frame-exporter
+    runtime: node
+    plan: standard
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+    limits:
+      cpu: 1
+      memory: 1G
