@@ -122,14 +122,21 @@ app.use(
 // Detect environment and set FFmpeg paths accordingly
 let ffmpegPath, ffprobePath;
 
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT_NAME;
 const isWindows = process.platform === 'win32';
 
-if (isProduction || !isWindows) {
-  // On Railway/Render, FFmpeg is in system PATH
-  console.log('Using system FFmpeg (production environment)');
+console.log('Environment detection:');
+console.log('  NODE_ENV:', process.env.NODE_ENV);
+console.log('  RAILWAY_ENVIRONMENT_NAME:', process.env.RAILWAY_ENVIRONMENT_NAME);
+console.log('  isProduction:', isProduction);
+console.log('  isWindows:', isWindows);
+console.log('  platform:', process.platform);
+
+if (!isWindows) {
+  // On Railway/Linux/Unix, use system PATH
+  console.log('Using system FFmpeg from PATH (non-Windows environment)');
 } else {
-  // Local Windows development
+  // Local Windows development - use bundled FFmpeg
   ffmpegPath = path.join(
     __dirname,
     'ffmpeg',
@@ -152,6 +159,22 @@ if (isProduction || !isWindows) {
 
   ffmpeg.setFfmpegPath(ffmpegPath);
   ffmpeg.setFfprobePath(ffprobePath);
+}
+
+// Verify FFmpeg is available
+const { execSync } = require('child_process');
+try {
+  const result = execSync('ffmpeg -version', { stdio: 'pipe' }).toString();
+  console.log('✓ FFmpeg is available on system');
+} catch (e) {
+  console.warn('⚠ WARNING: FFmpeg may not be available on system PATH');
+}
+
+try {
+  const result = execSync('ffprobe -version', { stdio: 'pipe' }).toString();
+  console.log('✓ FFprobe is available on system');
+} catch (e) {
+  console.warn('⚠ WARNING: FFprobe may not be available on system PATH');
 }
 
 /* =========================
@@ -236,6 +259,24 @@ function cleanupOldFiles() {
 ========================= */
 
 app.get('/api/health', (req, res) => {
+  // Test if FFmpeg/FFprobe are available
+  let ffmpegAvailable = false;
+  let ffprobeAvailable = false;
+  
+  try {
+    execSync('ffmpeg -version', { stdio: 'pipe' });
+    ffmpegAvailable = true;
+  } catch (e) {
+    console.error('FFmpeg not available:', e.message);
+  }
+  
+  try {
+    execSync('ffprobe -version', { stdio: 'pipe' });
+    ffprobeAvailable = true;
+  } catch (e) {
+    console.error('FFprobe not available:', e.message);
+  }
+
   res.json({
     status: 'ok',
     message:
@@ -243,7 +284,20 @@ app.get('/api/health', (req, res) => {
     maxFps: MAX_FPS,
     uploadLimitGB:
       UPLOAD_LIMIT /
-      (1024 * 1024 * 1024)
+      (1024 * 1024 * 1024),
+    ffmpeg: {
+      available: ffmpegAvailable,
+      status: ffmpegAvailable ? 'Ready' : 'Not found on system PATH'
+    },
+    ffprobe: {
+      available: ffprobeAvailable,
+      status: ffprobeAvailable ? 'Ready' : 'Not found on system PATH'
+    },
+    environment: {
+      nodeEnv: process.env.NODE_ENV || 'not set',
+      platform: process.platform,
+      isRailway: !!process.env.RAILWAY_ENVIRONMENT_NAME
+    }
   });
 });
 
@@ -264,10 +318,31 @@ app.post(
       }
 
       const videoPath = req.file.path;
+      
+      console.log('Processing video file:', videoPath);
+      
+      // Set a timeout for ffprobe to avoid hanging
+      let probeCompleted = false;
+      const timeoutId = setTimeout(() => {
+        if (!probeCompleted && !res.headersSent) {
+          console.error('FFprobe timeout - operation took longer than 30 seconds');
+          probeCompleted = true;
+          try {
+            fs.unlinkSync(videoPath);
+          } catch (e) {}
+          return res.status(500).json({
+            error:
+              'Video analysis timed out. FFmpeg/FFprobe may not be available on the server.'
+          });
+        }
+      }, 30000); // 30 second timeout
 
       ffmpeg.ffprobe(
         videoPath,
         (err, metadata) => {
+          probeCompleted = true;
+          clearTimeout(timeoutId);
+          
           try {
             fs.unlinkSync(videoPath);
           } catch (e) {}
@@ -275,12 +350,12 @@ app.post(
           if (err) {
             console.error(
               'FFprobe error:',
-              err
+              err.message || err
             );
 
             return res.status(400).json({
               error:
-                'Unable to read video file'
+                'Unable to read video file: ' + (err.message || err)
             });
           }
 
@@ -478,7 +553,22 @@ app.post(
 
 function getVideoDuration(videoPath) {
   return new Promise((resolve, reject) => {
+    let probeCompleted = false;
+    
+    // Set a 30 second timeout
+    const timeoutId = setTimeout(() => {
+      if (!probeCompleted) {
+        probeCompleted = true;
+        reject(new Error('FFprobe timeout - could not read video duration within 30 seconds'));
+      }
+    }, 30000);
+    
     ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      if (probeCompleted) return; // Timeout already occurred
+      
+      probeCompleted = true;
+      clearTimeout(timeoutId);
+      
       if (err) {
         reject(err);
       } else {
@@ -498,7 +588,9 @@ function extractFramesBatch(
 ) {
   return new Promise(async (resolve, reject) => {
     try {
+      console.log('Getting video duration...');
       const videoDuration = await getVideoDuration(videoPath);
+      console.log('Video duration obtained:', videoDuration);
       
       // Validate and adjust timeframe
       let extractStartTime = Math.max(0, startTime);
