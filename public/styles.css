@@ -391,6 +391,111 @@ section h2 {
   line-height: 1.6;
 }
 
+/* TIMEFRAME CONFIG */
+
+.timeframe-section {
+  background: rgba(255, 255, 255, 0.42);
+
+  border: 1px solid var(--line);
+
+  border-radius: var(--radius-md);
+
+  padding: 24px;
+
+  margin: 24px 0;
+}
+
+.timeframe-hint {
+  font-size: 0.9rem;
+
+  color: var(--muted);
+
+  margin-bottom: 18px;
+
+  line-height: 1.5;
+}
+
+.timeframe-config {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+@media (max-width: 600px) {
+  .timeframe-config {
+    grid-template-columns: 1fr;
+  }
+}
+
+.timeframe-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timeframe-label {
+  font-size: 0.9rem;
+
+  font-weight: 500;
+
+  color: var(--text);
+}
+
+.timeframe-input {
+  border: 1px solid rgba(22, 22, 22, 0.1);
+
+  border-radius: var(--radius-sm);
+
+  background: rgba(255, 255, 255, 0.7);
+
+  padding: 12px 14px;
+
+  font-size: 0.95rem;
+
+  color: var(--text);
+
+  transition:
+    border-color var(--transition),
+    background var(--transition);
+}
+
+.timeframe-input:focus {
+  outline: none;
+
+  border-color: rgba(31, 58, 95, 0.3);
+
+  background: white;
+}
+
+.timeframe-input::placeholder {
+  color: var(--muted);
+
+  opacity: 0.6;
+}
+
+.timeframe-help {
+  font-size: 0.8rem;
+
+  min-height: 18px;
+
+  display: block;
+}
+
+.timeframe-info {
+  font-size: 0.9rem;
+
+  color: var(--accent);
+
+  background: rgba(31, 58, 95, 0.05);
+
+  padding: 12px;
+
+  border-radius: 10px;
+
+  border-left: 3px solid var(--accent);
+}
+
 /* ACTION */
 
 .action-section {
@@ -598,6 +703,52 @@ section h2 {
   font-size: 0.9rem;
 }
 
+.progress-batch-info {
+  text-align: center;
+
+  font-size: 0.9rem;
+
+  color: var(--accent);
+
+  font-weight: 500;
+
+  margin-bottom: 12px;
+}
+
+.batch-progress-container {
+  margin: 16px 0;
+
+  padding: 12px;
+
+  background: rgba(255, 255, 255, 0.4);
+
+  border-radius: 12px;
+}
+
+.batch-progress-bars {
+  display: flex;
+
+  gap: 2px;
+
+  flex-wrap: wrap;
+}
+
+.batch-progress-bar {
+  flex: 1;
+
+  height: 8px;
+
+  background: #e0e0e0;
+
+  border-radius: 4px;
+
+  transition: background-color 0.3s ease;
+}
+
+.batch-progress-bar.completed {
+  background: #4CAF50;
+}
+
 /* STATUS */
 
 .status {
@@ -629,6 +780,14 @@ section h2 {
 }
 
 .status.processing {
+  background: rgba(154, 107, 47, 0.08);
+
+  color: var(--warning);
+
+  border-color: rgba(154, 107, 47, 0.12);
+}
+
+.status.warning {
   background: rgba(154, 107, 47, 0.08);
 
   color: var(--warning);

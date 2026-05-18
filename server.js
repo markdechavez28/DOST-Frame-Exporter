@@ -165,6 +165,8 @@ const FRAME_QUALITY = 8;
 
 const ZIP_COMPRESSION_LEVEL = 6;
 
+const BATCH_DURATION = 30; // seconds per batch
+
 /* =========================
    CLEANUP
 ========================= */
@@ -360,6 +362,24 @@ app.post(
         });
       }
 
+      // Parse timeframe parameters
+      const startTime = parseFloat(req.body.startTime) || 0;
+      const endTime = parseFloat(req.body.endTime) || null;
+
+      if (startTime < 0) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          error: 'Start time cannot be negative'
+        });
+      }
+
+      if (endTime !== null && endTime < startTime) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          error: 'End time must be after start time'
+        });
+      }
+
       const videoPath =
         req.file.path;
 
@@ -379,10 +399,14 @@ app.post(
         recursive: true
       });
 
-      await extractFrames(
+      // Use batch extraction with timeframe parameters
+      await extractFramesBatch(
         videoPath,
         outputDir,
-        fps
+        fps,
+        startTime,
+        endTime,
+        res // Pass response for SSE events
       );
 
       const zipPath =
@@ -451,6 +475,95 @@ app.post(
 /* =========================
    EXTRACT FUNCTION
 ========================= */
+
+function getVideoDuration(videoPath) {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(metadata.format.duration);
+      }
+    });
+  });
+}
+
+function extractFramesBatch(
+  videoPath,
+  outputDir,
+  fps,
+  startTime = 0,
+  endTime = null,
+  res = null
+) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const videoDuration = await getVideoDuration(videoPath);
+      
+      // Validate and adjust timeframe
+      let extractStartTime = Math.max(0, startTime);
+      let extractEndTime = endTime !== null ? Math.min(endTime, videoDuration) : videoDuration;
+      let extractDuration = extractEndTime - extractStartTime;
+
+      if (extractDuration <= 0) {
+        throw new Error('Invalid timeframe: end time must be after start time');
+      }
+
+      const totalBatches = Math.ceil(extractDuration / BATCH_DURATION);
+      
+      console.log(`Extracting frames from ${extractStartTime}s to ${extractEndTime}s (duration: ${extractDuration}s)`);
+      console.log(`Video duration: ${videoDuration}s, Total batches: ${totalBatches}`);
+
+      let frameCounter = 0;
+      let completedBatches = 0;
+
+      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+        // Calculate batch start time based on extract window
+        const batchStartTime = extractStartTime + (batchIndex * BATCH_DURATION);
+        const batchDuration = Math.min(BATCH_DURATION, extractEndTime - batchStartTime);
+
+        console.log(`Processing batch ${batchIndex + 1}/${totalBatches} (${batchStartTime}s - ${batchStartTime + batchDuration}s)`);
+
+        await new Promise((batchResolve, batchReject) => {
+          const framePattern = path.join(
+            outputDir,
+            'frame_%06d.png'
+          );
+
+          ffmpeg(videoPath)
+            .seek(batchStartTime)
+            .duration(batchDuration)
+            .outputOptions([
+              `-vf fps=${fps}`,
+              `-q:v ${FRAME_QUALITY}`,
+              '-c:v png'
+            ])
+            .output(framePattern)
+            .on('end', () => {
+              completedBatches++;
+              console.log(`Batch ${batchIndex + 1} completed`);
+              
+              // Send SSE event if response object is available
+              if (res && !res.writableEnded) {
+                res.write(`batch:${batchIndex}\n`);
+              }
+              
+              batchResolve();
+            })
+            .on('error', (err) => {
+              batchReject(err);
+            })
+            .run();
+        });
+      }
+
+      console.log('All batches extraction completed');
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
 
 function extractFrames(
   videoPath,

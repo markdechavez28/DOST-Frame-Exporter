@@ -8,6 +8,12 @@ const estimatedFrames = document.getElementById('estimatedFrames');
 const fpsSlider = document.getElementById('fpsSlider');
 const fpsInput = document.getElementById('fpsInput');
 const fpsDescription = document.getElementById('fpsDescription');
+const startTimeInput = document.getElementById('startTimeInput');
+const endTimeInput = document.getElementById('endTimeInput');
+const startTimeHelp = document.getElementById('startTimeHelp');
+const endTimeHelp = document.getElementById('endTimeHelp');
+const timeframeInfo = document.getElementById('timeframeInfo');
+const timeframeDisplay = document.getElementById('timeframeDisplay');
 const extractBtn = document.getElementById('extractBtn');
 const cancelBtn = document.getElementById('cancelBtn');
 const status = document.getElementById('status');
@@ -18,12 +24,21 @@ const elapsedTime = document.getElementById('elapsedTime');
 const estimatedRemaining = document.getElementById('estimatedRemaining');
 const progressFill = document.getElementById('progressFill');
 const progressMessage = document.getElementById('progressMessage');
+const progressBatchInfo = document.getElementById('progressBatchInfo');
+const currentBatch = document.getElementById('currentBatch');
+const totalBatches = document.getElementById('totalBatches');
+const batchProgressContainer = document.getElementById('batchProgressContainer');
+const batchProgressBars = document.getElementById('batchProgressBars');
 
 let selectedVideo = null;
 let videoDurationSeconds = 0;
 let extractionStartTime = null;
 let extractionAbortController = null;
 let totalEstimatedFrames = 0;
+let currentBatchCount = 0;
+let totalBatchCount = 0;
+let batchCompletionStatus = {}; // Track which batches are complete
+let extractedFramesCount = 0; // Track extracted frames for partial download
 
 // Upload Area Click Handler
 uploadArea.addEventListener('click', () => {
@@ -97,6 +112,12 @@ fpsInput.addEventListener('blur', (e) => {
   updateFpsDescription();
   updateEstimatedFrames();
 });
+
+// Timeframe Input Handlers
+startTimeInput.addEventListener('input', validateTimeframeInputs);
+endTimeInput.addEventListener('input', validateTimeframeInputs);
+startTimeInput.addEventListener('blur', validateTimeframeInputs);
+endTimeInput.addEventListener('blur', validateTimeframeInputs);
 
 // Extract Frames Handler
 extractBtn.addEventListener('click', async () => {
@@ -218,22 +239,161 @@ function updateUploadAreaText() {
 }
 
 /**
- * Extract frames with progress tracking
+ * Convert time string (MM:SS or HH:MM:SS) to seconds
+ */
+function timeToSeconds(timeString) {
+  if (!timeString || timeString.trim() === '') return null;
+  
+  const parts = timeString.trim().split(':').map(p => parseInt(p));
+  
+  if (parts.length === 2) {
+    const [mm, ss] = parts;
+    if (isNaN(mm) || isNaN(ss) || mm < 0 || ss < 0 || ss >= 60) return null;
+    return mm * 60 + ss;
+  } else if (parts.length === 3) {
+    const [hh, mm, ss] = parts;
+    if (isNaN(hh) || isNaN(mm) || isNaN(ss) || hh < 0 || mm < 0 || ss < 0 || mm >= 60 || ss >= 60) return null;
+    return hh * 3600 + mm * 60 + ss;
+  }
+  
+  return null;
+}
+
+/**
+ * Convert seconds to time string (MM:SS or HH:MM:SS)
+ */
+function secondsToTime(seconds) {
+  if (seconds === null || seconds === undefined) return '';
+  
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+/**
+ * Validate and sync timeframe inputs
+ */
+function validateTimeframeInputs() {
+  const startStr = startTimeInput.value.trim();
+  const endStr = endTimeInput.value.trim();
+  
+  startTimeHelp.textContent = '';
+  endTimeHelp.textContent = '';
+  timeframeInfo.style.display = 'none';
+  
+  // If both are empty, it's valid (use entire video)
+  if (!startStr && !endStr) {
+    updateEstimatedFrames();
+    return true;
+  }
+  
+  const startSeconds = timeToSeconds(startStr);
+  const endSeconds = timeToSeconds(endStr);
+  
+  // Validate start time
+  if (startStr && startSeconds === null) {
+    startTimeHelp.textContent = '❌ Invalid format. Use MM:SS or HH:MM:SS';
+    startTimeHelp.style.color = 'red';
+    return false;
+  }
+  
+  // Validate end time
+  if (endStr && endSeconds === null) {
+    endTimeHelp.textContent = '❌ Invalid format. Use MM:SS or HH:MM:SS';
+    endTimeHelp.style.color = 'red';
+    return false;
+  }
+  
+  // Validate ranges
+  if (startSeconds !== null && startSeconds >= videoDurationSeconds) {
+    startTimeHelp.textContent = `❌ Start time exceeds video duration (${formatDuration(videoDurationSeconds)})`;
+    startTimeHelp.style.color = 'red';
+    return false;
+  }
+  
+  if (endSeconds !== null && endSeconds > videoDurationSeconds) {
+    endTimeHelp.textContent = `❌ End time exceeds video duration (${formatDuration(videoDurationSeconds)})`;
+    endTimeHelp.style.color = 'red';
+    return false;
+  }
+  
+  if (startSeconds !== null && endSeconds !== null && startSeconds >= endSeconds) {
+    endTimeHelp.textContent = '❌ End time must be after start time';
+    endTimeHelp.style.color = 'red';
+    return false;
+  }
+  
+  // Valid - update display
+  if (startSeconds !== null || endSeconds !== null) {
+    const start = startSeconds !== null ? startSeconds : 0;
+    const end = endSeconds !== null ? endSeconds : videoDurationSeconds;
+    const duration = end - start;
+    const fps = parseInt(fpsInput.value);
+    const frames = Math.ceil(duration * fps);
+    
+    totalEstimatedFrames = frames;
+    estimatedFrames.textContent = frames.toLocaleString();
+    
+    timeframeDisplay.textContent = `${secondsToTime(start)} to ${secondsToTime(end)} (${formatDuration(duration)})`;
+    timeframeInfo.style.display = 'block';
+  } else {
+    updateEstimatedFrames();
+  }
+  
+  return true;
+}
+
+/**
+ * Extract frames with progress tracking and batch-aware progress bar
  */
 async function extractFrames(fps) {
   if (!selectedVideo) return;
 
+  // Validate timeframe inputs
+  if (!validateTimeframeInputs()) {
+    showStatus('Please fix timeframe errors', 'error');
+    return;
+  }
+
   extractBtn.disabled = true;
   extractionAbortController = new AbortController();
   extractionStartTime = Date.now();
+  extractedFramesCount = 0;
+  currentBatchCount = 0;
+  batchCompletionStatus = {};
   
   showProgress();
   updateProgressDisplay(0, 0);
+  
+  // Get timeframe parameters
+  const startStr = startTimeInput.value.trim();
+  const endStr = endTimeInput.value.trim();
+  const startTime = timeToSeconds(startStr) || 0;
+  const endTime = timeToSeconds(endStr) || videoDurationSeconds;
+  const extractDuration = endTime - startTime;
+
+  // Calculate number of batches
+  totalBatchCount = Math.ceil(extractDuration / 30);
+  currentBatch.textContent = '0';
+  totalBatches.textContent = totalBatchCount;
+  progressBatchInfo.style.display = 'block';
+  
+  // Initialize batch progress bars
+  initializeBatchProgressBars(totalBatchCount);
+
+  progressMessage.textContent = `Processing video in ${totalBatchCount} batches of 30 seconds each...`;
 
   try {
     const formData = new FormData();
     formData.append('video', selectedVideo);
     formData.append('fps', fps);
+    formData.append('startTime', startTime);
+    formData.append('endTime', endTime);
 
     const response = await fetch('/api/extract-frames', {
       method: 'POST',
@@ -246,44 +406,83 @@ async function extractFrames(fps) {
       throw new Error(error.error || 'Failed to extract frames');
     }
 
-    // Handle the response as a stream for progress tracking
+    // Handle batch progress updates via Server-Sent Events or polling
+    // For now, we'll handle the response as a stream for progress tracking
     const reader = response.body.getReader();
     const chunks = [];
+    let lastUpdateTime = Date.now();
+    let batchUpdateQueue = [];
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      
-      // Update progress based on data received
-      const totalSize = response.headers.get('content-length');
-      if (totalSize) {
-        const receivedSize = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-        const percentReceived = Math.round((receivedSize / totalSize) * 100);
-        // Note: This is download progress, not extraction progress
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        
+        // Parse SSE events if they're sent
+        const text = new TextDecoder().decode(value);
+        parseProgressEvents(text, batchCompletionStatus);
+        
+        // Update progress based on data received
+        const totalSize = response.headers.get('content-length');
+        if (totalSize) {
+          const receivedSize = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+          const percentReceived = Math.round((receivedSize / totalSize) * 100);
+          
+          // Update every 500ms to avoid excessive updates
+          const now = Date.now();
+          if (now - lastUpdateTime > 500) {
+            updateBatchProgressDisplay(batchCompletionStatus);
+            progressMessage.textContent = `Processing... Download: ${percentReceived}%`;
+            lastUpdateTime = now;
+          }
+        }
+      }
+    } catch (streamError) {
+      if (streamError.name !== 'AbortError') {
+        throw streamError;
       }
     }
 
     // Combine chunks and create blob
     const blob = new Blob(chunks);
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `frames_${fps}fps.zip`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
-
-    hideProgress();
-    showStatus('Frames extracted and downloaded successfully!', 'success');
-    setTimeout(() => {
-      hideStatus();
-    }, 5000);
+    
+    // Check if we have partial results
+    const hasPartialResults = Object.keys(batchCompletionStatus).some(k => batchCompletionStatus[k]);
+    
+    if (blob.size > 0) {
+      downloadBlob(blob, fps);
+      hideProgress();
+      
+      if (extractionAbortController.signal.aborted) {
+        if (hasPartialResults) {
+          showStatus('Extraction cancelled. Partial frames downloaded!', 'warning');
+        } else {
+          showStatus('Extraction cancelled', 'error');
+        }
+      } else {
+        showStatus('Frames extracted and downloaded successfully!', 'success');
+      }
+      
+      setTimeout(() => {
+        hideStatus();
+      }, 5000);
+    } else {
+      hideProgress();
+      showStatus('No frames extracted', 'error');
+    }
   } catch (error) {
     if (error.name === 'AbortError') {
-      hideProgress();
-      showStatus('Extraction cancelled by user', 'error');
+      // User cancelled - still offer partial download if available
+      const response = event.target?.response;
+      if (response && response.size > 0) {
+        downloadBlob(response, fps);
+        hideProgress();
+        showStatus('Extraction cancelled. Partial frames downloaded!', 'warning');
+      } else {
+        hideProgress();
+        showStatus('Extraction cancelled by user', 'error');
+      }
     } else {
       hideProgress();
       showStatus(`Error: ${error.message}`, 'error');
@@ -292,6 +491,76 @@ async function extractFrames(fps) {
     extractBtn.disabled = false;
     extractionAbortController = null;
   }
+}
+
+/**
+ * Initialize batch progress bar visualization
+ */
+function initializeBatchProgressBars(batchCount) {
+  batchProgressBars.innerHTML = '';
+  batchProgressContainer.style.display = 'block';
+  
+  for (let i = 0; i < batchCount; i++) {
+    const batchBar = document.createElement('div');
+    batchBar.className = 'batch-progress-bar';
+    batchBar.id = `batch-${i}`;
+    batchBar.style.flex = `1`;
+    batchBar.style.height = '8px';
+    batchBar.style.margin = '2px';
+    batchBar.style.backgroundColor = '#e0e0e0';
+    batchBar.style.borderRadius = '4px';
+    batchBar.style.transition = 'background-color 0.3s ease';
+    batchProgressBars.appendChild(batchBar);
+  }
+}
+
+/**
+ * Parse batch progress events from server
+ */
+function parseProgressEvents(text, statusObj) {
+  const lines = text.split('\n');
+  lines.forEach(line => {
+    if (line.startsWith('batch:')) {
+      try {
+        const batchNum = parseInt(line.substring(6).trim());
+        statusObj[batchNum] = true;
+      } catch (e) {}
+    }
+  });
+}
+
+/**
+ * Update batch progress display
+ */
+function updateBatchProgressDisplay(statusObj) {
+  let completedCount = 0;
+  Object.keys(statusObj).forEach(batchNum => {
+    if (statusObj[batchNum]) {
+      const batchBar = document.getElementById(`batch-${batchNum}`);
+      if (batchBar) {
+        batchBar.style.backgroundColor = '#4CAF50';
+      }
+      completedCount++;
+    }
+  });
+  
+  currentBatch.textContent = completedCount;
+  const overallPercent = Math.round((completedCount / totalBatchCount) * 100);
+  updateProgressDisplay(extractedFramesCount, overallPercent);
+}
+
+/**
+ * Download blob to file
+ */
+function downloadBlob(blob, fps) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `frames_${fps}fps.zip`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
 }
 
 /**

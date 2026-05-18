@@ -137,6 +137,51 @@
           </div>
         </section>
 
+        <!-- STEP 2.5 -->
+        <section class="timeframe-section">
+
+          <h2>Step 2.5 · Trim Video (Optional)</h2>
+
+          <p class="timeframe-hint">
+            Specify the start and end time to extract frames from a specific portion of the video. Leave blank to use the entire video.
+          </p>
+
+          <div class="timeframe-config">
+
+            <div class="timeframe-input-group">
+              <label for="startTimeInput" class="timeframe-label">
+                Start Time (MM:SS)
+              </label>
+              <input
+                type="text"
+                id="startTimeInput"
+                placeholder="00:00"
+                class="timeframe-input"
+              />
+              <span class="timeframe-help" id="startTimeHelp"></span>
+            </div>
+
+            <div class="timeframe-input-group">
+              <label for="endTimeInput" class="timeframe-label">
+                End Time (MM:SS)
+              </label>
+              <input
+                type="text"
+                id="endTimeInput"
+                placeholder="00:00"
+                class="timeframe-input"
+              />
+              <span class="timeframe-help" id="endTimeHelp"></span>
+            </div>
+
+          </div>
+
+          <p class="timeframe-info" id="timeframeInfo" style="display: none;">
+            Extracting from <span id="timeframeDisplay"></span>
+          </p>
+
+        </section>
+
         <!-- STEP 3 -->
         <section class="action-section">
 
@@ -239,11 +284,19 @@
 
           </div>
 
+          <p class="progress-batch-info" id="progressBatchInfo" style="display: none;">
+            Batch <span id="currentBatch">0</span> of <span id="totalBatches">0</span>
+          </p>
+
           <div class="progress-bar">
             <div
               class="progress-fill"
               id="progressFill"
             ></div>
+          </div>
+
+          <div class="batch-progress-container" id="batchProgressContainer" style="display: none;">
+            <div class="batch-progress-bars" id="batchProgressBars"></div>
           </div>
 
           <p
